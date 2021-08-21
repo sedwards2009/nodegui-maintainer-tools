@@ -1,0 +1,7 @@
+*~
+dist/
+.cache/
+.vscode/
+.directory
+yarn-error.log
+node_modules/

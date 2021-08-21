@@ -1,0 +1,19 @@
+{
+    "compilerOptions": {
+        "target": "es2020",
+        "module": "ES2020",
+        "declaration": true,
+        "moduleResolution": "node",
+        "noImplicitAny": false,
+        "noImplicitThis": true,
+        "noImplicitReturns": true,
+        "outDir": "dist",
+        "removeComments": false,
+        "sourceMap": true,
+        "lib": ["ES2020"],
+        "noLib": false,
+        "experimentalDecorators": true,
+        "baseUrl": ".",
+        "emitDecoratorMetadata": true
+    }
+}
