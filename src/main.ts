@@ -8,11 +8,12 @@ import { default as getStdin } from 'get-stdin';
 const log = console.log.bind(console);
 
 const classNameRegex = /\/\/\s+CLASS:\s+(?<className>\w+)/;
-const sigRegex = /\/\/\s+TODO:\s+(?<returnType>\w+)\s+\&?(?<methodName>[A-Za-z0-9]+)[(](?<args>[^)]*)\)/;
+const sigRegex = /\/\/\s+TODO:\s+(virtual\s+)?(?<returnType>\w+)\s+\&?(?<methodName>[A-Za-z0-9]+)[(](?<args>[^)]*)\)/;
 
 // ---- Argument types ----
 const SUPPORTED_ARG_TYPES = [
-  'GLenum', 'GLfloat', 'GLint', 'GLuint', 'GLsizei', 'GLclampf', 'GLboolean', 'const QModelIndex', 'int'
+  'GLenum', 'GLfloat', 'GLint', 'GLuint', 'GLsizei', 'GLclampf', 'GLboolean',
+  'const QModelIndex', 'int', 'const QPoint'
 ] as const;
 type ArgumentTypeName = typeof SUPPORTED_ARG_TYPES[number];
 
@@ -20,14 +21,18 @@ function isSupportedArgType(argName: string): argName is ArgumentTypeName {
   return (<readonly string[]>SUPPORTED_ARG_TYPES).includes(argName);
 }
 
-// List of argument types which need to be deferenced with `*` during the method call.
-const DEFERENCE_TYPES: ArgumentTypeName[] = [
+// List of argument types which need to be dereferenced with `*` during the method call.
+const DEREFERENCE_TYPES: ArgumentTypeName[] = [
+  'const QModelIndex', 'const QPoint'
+];
+
+const TS_WRAPPER_TYPES: ArgumentTypeName[] = [
   'const QModelIndex'
 ];
 
 // ---- Return types ----
 const SUPPORTED_RETURN_TYPES = [
-  'void', 'GLfloat', 'GLenum', 'GLboolean', 'GLint', 'GLuint', 'GLclampf', 'GLsizei', 'bool'
+  'void', 'GLfloat', 'GLenum', 'GLboolean', 'GLint', 'GLuint', 'GLclampf', 'GLsizei', 'bool', 'QModelIndex'
 ];
 type ReturnTypeName = typeof SUPPORTED_RETURN_TYPES[number];
 
@@ -88,6 +93,16 @@ function expandMethod(className: string, signature: string): ExpandedMethodResul
 `;
   const napiInit = `       InstanceMethod("${methodName}", &${className}Wrap::${methodName}),
 `;
+
+  const methodBody = formatCppMethodBody(className, methodName, args, returnType);
+  const tsBody = formatTSMethod(methodName, args, returnType);
+
+  const result: ExpandedMethodOkResult = { type: 'ok', methodDeclaration, napiInit, methodBody, tsBody };
+  return result;
+}
+
+
+function formatCppMethodBody(className: string, methodName: string, args: CppArgument[], returnType: ReturnTypeName): string {
   let methodBody = `
 Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
@@ -119,6 +134,11 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
   QModelIndex* ${arg.name} = ${arg.name}Wrap->getInternalInstance();`;
         break;
 
+      case 'const QPoint':
+        methodBody += `  QPointWrap* ${arg.name}Wrap = Napi::ObjectWrap<QPointWrap>::Unwrap(info[${i}].As<Napi::Object>());
+  QPoint* ${arg.name} = ${arg.name}Wrap->getInternalInstance();`;
+        break;
+
       default:
     }
     methodBody += `
@@ -136,7 +156,7 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
 
   methodBody += `this->instance->${methodName}(`;
   methodBody += args.map(arg => {
-    if (DEFERENCE_TYPES.includes(arg.type)) {
+    if (DEREFERENCE_TYPES.includes(arg.type)) {
       return `*${arg.name}`;
     } else {
       return arg.name;
@@ -163,16 +183,22 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
     case 'bool':
       methodBody += `  return Napi::Boolean::New(env, result);`;
       break;
-
+    case 'QModelIndex':
+      methodBody += `  auto resultInstance = QModelIndexWrap::constructor.New(
+    {Napi::External<QModelIndex>::New(env, new QModelIndex(result))});
+  return resultInstance;`;
+      break;
     default:
       throw new Error(`Unexpected return type ${returnType} while processing C++ body.`);
   }
 
-methodBody += `
+  methodBody += `
 }
 `;
+  return methodBody;
+}
 
-  // --- TypeScript ---
+function formatTSMethod(methodName: string, args: CppArgument[], returnType: ReturnTypeName): string {
   let tsBody = `    ${formatTSMethodName(methodName)}(`;
   let comma = '';
   for (const arg of args) {
@@ -196,6 +222,9 @@ methodBody += `
       case 'const QModelIndex':
         tsBody += 'QModelIndex';
         break;
+      case 'const QPoint':
+        tsBody += 'QPoint';
+        break
       default:
         throw new Error(`Unexpected argument type ${arg.name} while processing TypeScript.`);
     }
@@ -220,8 +249,12 @@ methodBody += `
       tsBody += 'number';
       break;
 
-    default:
+    case 'QModelIndex':
+      tsBody += returnType;
       break;
+
+    default:
+      throw new Error(`Unexpected return type ${returnType} while processing TypeScript.`);
   }
   tsBody += ` {
 `;
@@ -233,14 +266,18 @@ methodBody += `
   }
 
   tsBody += `this.native.${methodName}(`;
-  tsBody += args.map(arg => arg.name).join(', ');
+  tsBody += args.map((arg): string => {
+    if (TS_WRAPPER_TYPES.includes(arg.type)) {
+      return `${arg.name}.native`;
+    } else {
+      return arg.name;
+    }
+  }).join(', ');
   tsBody += `);
     }
 
 `;
-
-  const result: ExpandedMethodOkResult = { type: 'ok', methodDeclaration, napiInit, methodBody, tsBody };
-  return result;
+  return tsBody;
 }
 
 interface CppArgument {
@@ -331,7 +368,7 @@ function process(inputString: string): void {
         return;
     }
   }
-
+  log(`// CLASS: ${className}`);
   log('//----------------------------------------------------');
   log('// C++ declaration');
   log(cppDeclaration.join(''));
