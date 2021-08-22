@@ -13,7 +13,7 @@ const sigRegex = /\/\/\s+TODO:\s+(virtual\s+)?(?<returnType>\w+)\s+\&?(?<methodN
 // ---- Argument types ----
 const SUPPORTED_ARG_TYPES = [
   'GLenum', 'GLfloat', 'GLint', 'GLuint', 'GLsizei', 'GLclampf', 'GLboolean',
-  'const QModelIndex', 'int', 'const QPoint'
+  'const QModelIndex', 'int', 'const QPoint', 'QItemSelectionModel::SelectionFlags'
 ] as const;
 type ArgumentTypeName = typeof SUPPORTED_ARG_TYPES[number];
 
@@ -138,7 +138,9 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
         methodBody += `  QPointWrap* ${arg.name}Wrap = Napi::ObjectWrap<QPointWrap>::Unwrap(info[${i}].As<Napi::Object>());
   QPoint* ${arg.name} = ${arg.name}Wrap->getInternalInstance();`;
         break;
-
+      case 'QItemSelectionModel::SelectionFlags':
+        methodBody += `  QItemSelectionModel::SelectionFlags ${arg.name} = static_cast<QItemSelectionModel::SelectionFlags>(info[${i}].As<Napi::Number>().Int32Value());`;
+        break;
       default:
     }
     methodBody += `
@@ -225,6 +227,9 @@ function formatTSMethod(methodName: string, args: CppArgument[], returnType: Ret
       case 'const QPoint':
         tsBody += 'QPoint';
         break
+      case 'QItemSelectionModel::SelectionFlags':
+        tsBody += 'SelectionFlag';
+        break;
       default:
         throw new Error(`Unexpected argument type ${arg.name} while processing TypeScript.`);
     }
