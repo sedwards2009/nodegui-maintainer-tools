@@ -32,7 +32,8 @@ const TS_WRAPPER_TYPES: ArgumentTypeName[] = [
 
 // ---- Return types ----
 const SUPPORTED_RETURN_TYPES = [
-  'void', 'GLfloat', 'GLenum', 'GLboolean', 'GLint', 'GLuint', 'GLclampf', 'GLsizei', 'bool', 'QModelIndex'
+  'void', 'GLfloat', 'GLenum', 'GLboolean', 'GLint', 'GLuint', 'GLclampf',
+  'GLsizei', 'bool', 'QModelIndex', 'QModelIndexList'
 ];
 type ReturnTypeName = typeof SUPPORTED_RETURN_TYPES[number];
 
@@ -190,6 +191,15 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
     {Napi::External<QModelIndex>::New(env, new QModelIndex(result))});
   return resultInstance;`;
       break;
+
+    case 'QModelIndexList':
+      methodBody += `  Napi::Array resultArrayNapi = Napi::Array::New(env, result.size());
+  for (int i = 0; i < result.size(); i++) {
+    resultArrayNapi[i] = QModelIndexWrap::constructor.New({Napi::External<QModelIndex>::New(env, new QModelIndex(result[i]))});
+  }
+  return resultArrayNapi;`;
+      break;
+
     default:
       throw new Error(`Unexpected return type ${returnType} while processing C++ body.`);
   }
@@ -258,29 +268,42 @@ function formatTSMethod(methodName: string, args: CppArgument[], returnType: Ret
       tsBody += returnType;
       break;
 
+    case 'QModelIndexList':
+      tsBody += 'QModelIndex[]';
+      break;
+
     default:
       throw new Error(`Unexpected return type ${returnType} while processing TypeScript.`);
   }
   tsBody += ` {
 `;
 
-  if (returnType != 'void') {
-    tsBody += `        return `;
-  } else {
-    tsBody += `        `;
-  }
-
-  tsBody += `this.native.${methodName}(`;
-  tsBody += args.map((arg): string => {
+  let methodCall = '';
+  methodCall += `this.native.${methodName}(`;
+  methodCall += args.map((arg): string => {
     if (TS_WRAPPER_TYPES.includes(arg.type)) {
       return `${arg.name}.native`;
     } else {
       return arg.name;
     }
   }).join(', ');
-  tsBody += `);
-    }
+  methodCall += `)`;
 
+  switch (returnType) {
+    case 'void':
+      tsBody += `${methodCall};
+`;
+      break;
+    case 'QModelIndexList':
+      tsBody += `        const methodResult = ${methodCall};
+        return methodResult.map((item: any) => new QModelIndex(item));
+`;
+      break;
+    default:
+      tsBody += `      return ${methodCall};
+`;
+  }
+  tsBody += `    }
 `;
   return tsBody;
 }
