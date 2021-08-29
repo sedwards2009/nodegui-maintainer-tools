@@ -13,7 +13,8 @@ const sigRegex = /\/\/\s+TODO:\s+(virtual\s+)?(?<returnType>\w+)\s+\&?(?<methodN
 // ---- Argument types ----
 const SUPPORTED_ARG_TYPES = [
   'GLenum', 'GLfloat', 'GLint', 'GLuint', 'GLsizei', 'GLclampf', 'GLboolean',
-  'const QModelIndex', 'int', 'const QPoint', 'QItemSelectionModel::SelectionFlags'
+  'const QModelIndex', 'int', 'const QPoint', 'QItemSelectionModel::SelectionFlags',
+  'QAbstractItemView::CursorAction', 'QAbstractItemView::ScrollHint', 'const QString'
 ] as const;
 type ArgumentTypeName = typeof SUPPORTED_ARG_TYPES[number];
 
@@ -142,6 +143,20 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
       case 'QItemSelectionModel::SelectionFlags':
         methodBody += `  QItemSelectionModel::SelectionFlags ${arg.name} = static_cast<QItemSelectionModel::SelectionFlags>(info[${i}].As<Napi::Number>().Int32Value());`;
         break;
+
+      case 'QAbstractItemView::CursorAction':
+        methodBody += `  QAbstractItemView::CursorAction ${arg.name} = static_cast<QAbstractItemView::CursorAction>(info[${i}].As<Napi::Number>().Int32Value());`;
+        break;
+
+      case 'QAbstractItemView::ScrollHint':
+        methodBody += `  QAbstractItemView::ScrollHint ${arg.name} = static_cast<QAbstractItemView::ScrollHint>(info[${i}].As<Napi::Number>().Int32Value());`;
+        break;
+
+      case 'const QString':
+        methodBody += `  std::string ${arg.name}NapiText = info[${i}].As<Napi::String>().Utf8Value();
+  QString ${arg.name} = QString::fromUtf8(${arg.name}NapiText.c_str());`;
+        break;
+
       default:
     }
     methodBody += `
@@ -240,6 +255,15 @@ function formatTSMethod(methodName: string, args: CppArgument[], returnType: Ret
       case 'QItemSelectionModel::SelectionFlags':
         tsBody += 'SelectionFlag';
         break;
+      case 'QAbstractItemView::CursorAction':
+        tsBody += 'CursorAction';
+        break;
+      case 'QAbstractItemView::ScrollHint':
+        tsBody += 'ScrollHint';
+        break;
+      case 'const QString':
+        tsBody += 'string';
+        break;
       default:
         throw new Error(`Unexpected argument type ${arg.name} while processing TypeScript.`);
     }
@@ -292,6 +316,10 @@ function formatTSMethod(methodName: string, args: CppArgument[], returnType: Ret
   switch (returnType) {
     case 'void':
       tsBody += `${methodCall};
+`;
+      break;
+    case 'QModelIndex':
+      tsBody += `      return new QModelIndex(${methodCall});
 `;
       break;
     case 'QModelIndexList':
