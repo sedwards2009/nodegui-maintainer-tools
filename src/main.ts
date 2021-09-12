@@ -8,13 +8,15 @@ import { default as getStdin } from 'get-stdin';
 const log = console.log.bind(console);
 
 const classNameRegex = /\/\/\s+CLASS:\s+(?<className>\w+)/;
-const sigRegex = /\/\/\s+TODO:\s+(virtual\s+)?(?<returnType>\w+)\s+\&?(?<methodName>[A-Za-z0-9]+)[(](?<args>[^)]*)\)/;
+const sigRegex = /\/\/\s+TODO:\s+(virtual\s+)?(?<returnType>[\w:]+)\s+\&?(?<methodName>[A-Za-z0-9]+)[(](?<args>[^)]*)\)/;
 
 // ---- Argument types ----
 const SUPPORTED_ARG_TYPES = [
   'GLenum', 'GLfloat', 'GLint', 'GLuint', 'GLsizei', 'GLclampf', 'GLboolean',
   'const QModelIndex', 'int', 'const QPoint', 'QItemSelectionModel::SelectionFlags',
-  'QAbstractItemView::CursorAction', 'QAbstractItemView::ScrollHint', 'const QString'
+  'QAbstractItemView::CursorAction', 'QAbstractItemView::ScrollHint', 'const QString',
+  'QHeaderView::ResizeMode', 'Qt::SortOrder', 'bool', 'Qt::Alignment', 'Qt::Orientation',
+  'uint', 'Qt::TextElideMode', 'QSizePolicy::Policy'
 ] as const;
 type ArgumentTypeName = typeof SUPPORTED_ARG_TYPES[number];
 
@@ -34,7 +36,9 @@ const TS_WRAPPER_TYPES: ArgumentTypeName[] = [
 // ---- Return types ----
 const SUPPORTED_RETURN_TYPES = [
   'void', 'GLfloat', 'GLenum', 'GLboolean', 'GLint', 'GLuint', 'GLclampf',
-  'GLsizei', 'bool', 'QModelIndex', 'QModelIndexList'
+  'GLsizei', 'bool', 'QModelIndex', 'QModelIndexList', 'Qt::Alignment', 'int',
+  'Qt::Orientation', 'Qt::SortOrder', 'QHeaderView::ResizeMode', 'QRect',
+  'QString'
 ];
 type ReturnTypeName = typeof SUPPORTED_RETURN_TYPES[number];
 
@@ -115,6 +119,7 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
     const arg = args[i];
     switch (arg.type) {
       case 'GLboolean':
+      case 'bool':
         methodBody += `  ${arg.type} ${arg.name} = info[${i}].As<Napi::Boolean>().Value();`;
         break;
       case 'GLclampf':
@@ -128,6 +133,7 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
         methodBody += `  ${arg.type} ${arg.name} = info[${i}].As<Napi::Number>().Int32Value();`;
         break;
       case 'GLuint':
+      case 'uint':
         methodBody += `  ${arg.type} ${arg.name} = info[${i}].As<Napi::Number>().Uint32Value();`;
         break;
 
@@ -155,6 +161,28 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
       case 'const QString':
         methodBody += `  std::string ${arg.name}NapiText = info[${i}].As<Napi::String>().Utf8Value();
   QString ${arg.name} = QString::fromUtf8(${arg.name}NapiText.c_str());`;
+        break;
+
+      case 'QHeaderView::ResizeMode':
+        methodBody += `  QHeaderView::ResizeMode ${arg.name} = static_cast<QHeaderView::ResizeMode>(info[${i}].As<Napi::Number>().Int32Value());`;
+        break;
+
+      case 'Qt::SortOrder':
+        methodBody += `  Qt::SortOrder ${arg.name} = static_cast<Qt::SortOrder>(info[${i}].As<Napi::Number>().Int32Value());`;
+        break;
+
+      case 'Qt::TextElideMode':
+        methodBody += `  Qt::TextElideMode ${arg.name} = static_cast<Qt::TextElideMode>(info[${i}].As<Napi::Number>().Int32Value());`;
+        break;
+
+      case 'Qt::Alignment':
+        methodBody += `  Qt::Alignment ${arg.name} = static_cast<Qt::Alignment>(info[${i}].As<Napi::Number>().Int32Value());`;
+        break;
+      case 'Qt::Orientation':
+        methodBody += `  Qt::Orientation ${arg.name} = static_cast<Qt::Orientation>(info[${i}].As<Napi::Number>().Int32Value());`;
+        break;
+      case 'QSizePolicy::Policy':
+        methodBody += `  QSizePolicy::Policy ${arg.name} = static_cast<QSizePolicy::Policy>(info[${i}].As<Napi::Number>().Int32Value());`;
         break;
 
       default:
@@ -188,15 +216,21 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
       methodBody += `  return env.Null();`;
       break;
 
+    case 'int':
     case 'GLclampf':
     case 'GLfloat':
     case 'GLenum':
     case 'GLint':
     case 'GLuint':
     case 'GLsizei':
-        methodBody += `  return Napi::Number::New(env, result);`;
+      methodBody += `  return Napi::Number::New(env, result);`;
       break;
-
+    case 'Qt::Alignment':
+    case 'Qt::Orientation':
+    case 'QHeaderView::ResizeMode':
+    case 'Qt::SortOrder':
+      methodBody += `  return Napi::Number::New(env, static_cast<uint>(result));`;
+      break;
     case 'GLboolean':
     case 'bool':
       methodBody += `  return Napi::Boolean::New(env, result);`;
@@ -206,7 +240,6 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
     {Napi::External<QModelIndex>::New(env, new QModelIndex(result))});
   return resultInstance;`;
       break;
-
     case 'QModelIndexList':
       methodBody += `  Napi::Array resultArrayNapi = Napi::Array::New(env, result.size());
   for (int i = 0; i < result.size(); i++) {
@@ -214,7 +247,15 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
   }
   return resultArrayNapi;`;
       break;
-
+    case 'QRect':
+      methodBody += `  auto resultInstance = QRectWrap::constructor.New(
+      {Napi::External<QRect>::New(env, new QRect(result))});
+    return resultInstance;`;
+      break;
+    case 'QString':
+      methodBody += `  return Napi::String::New(env, result.toStdString());
+`;
+      break;
     default:
       throw new Error(`Unexpected return type ${returnType} while processing C++ body.`);
   }
@@ -235,6 +276,7 @@ function formatTSMethod(methodName: string, args: CppArgument[], returnType: Ret
     tsBody += `${arg.name}: `;
     switch(arg.type) {
       case 'GLboolean':
+      case 'bool':
         tsBody += `boolean`;
         break;
       case 'GLclampf':
@@ -244,6 +286,7 @@ function formatTSMethod(methodName: string, args: CppArgument[], returnType: Ret
       case 'GLuint':
       case 'GLsizei':
       case 'int':
+      case 'uint':
         tsBody += `number`;
         break;
       case 'const QModelIndex':
@@ -261,8 +304,26 @@ function formatTSMethod(methodName: string, args: CppArgument[], returnType: Ret
       case 'QAbstractItemView::ScrollHint':
         tsBody += 'ScrollHint';
         break;
+      case 'QHeaderView::ResizeMode':
+        tsBody += 'QHeaderViewResizeMode';
+        break;
+      case 'Qt::SortOrder':
+        tsBody += 'SortOrder';
+        break;
+      case 'Qt::TextElideMode':
+        tsBody += 'TextElideMode';
+        break;
+      case 'Qt::Alignment':
+        tsBody += 'AlignmentFlag';
+        break;
+      case 'Qt::Orientation':
+        tsBody += 'Orientation';
+        break;
       case 'const QString':
         tsBody += 'string';
+        break;
+      case 'QSizePolicy::Policy':
+        tsBody += 'QSizePolicyPolicy';
         break;
       default:
         throw new Error(`Unexpected argument type ${arg.name} while processing TypeScript.`);
@@ -280,6 +341,7 @@ function formatTSMethod(methodName: string, args: CppArgument[], returnType: Ret
       tsBody += 'boolean';
       break;
 
+    case 'int':
     case 'GLenum':
     case 'GLfloat':
     case 'GLint':
@@ -294,6 +356,34 @@ function formatTSMethod(methodName: string, args: CppArgument[], returnType: Ret
 
     case 'QModelIndexList':
       tsBody += 'QModelIndex[]';
+      break;
+
+    case 'QRect':
+      tsBody += 'QRect';
+      break;
+
+    case 'Qt::Alignment':
+      tsBody += 'AlignmentFlag';
+      break;
+
+    case 'Qt::Orientation':
+      tsBody += 'Orientation';
+      break;
+
+    case 'QHeaderView::ResizeMode':
+      tsBody += 'QHeaderViewResizeMode';
+      break;
+
+    case 'Qt::SortOrder':
+      tsBody += 'SortOrder';
+      break;
+
+    case 'Qt::TextElideMode':
+      tsBody += 'TextElideMode';
+      break;
+
+    case 'QString':
+      tsBody += 'string';
       break;
 
     default:
@@ -319,7 +409,7 @@ function formatTSMethod(methodName: string, args: CppArgument[], returnType: Ret
 `;
       break;
     case 'QModelIndex':
-      tsBody += `      return new QModelIndex(${methodCall});
+      tsBody += `        return new QModelIndex(${methodCall});
 `;
       break;
     case 'QModelIndexList':
@@ -327,8 +417,12 @@ function formatTSMethod(methodName: string, args: CppArgument[], returnType: Ret
         return methodResult.map((item: any) => new QModelIndex(item));
 `;
       break;
+    case 'QRect':
+      tsBody += `        return new QRect(${methodCall});
+`;
+      break;
     default:
-      tsBody += `      return ${methodCall};
+      tsBody += `        return ${methodCall};
 `;
   }
   tsBody += `    }
