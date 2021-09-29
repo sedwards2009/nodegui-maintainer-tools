@@ -16,7 +16,8 @@ const SUPPORTED_ARG_TYPES = [
   'const QModelIndex', 'int', 'const QPoint', 'QItemSelectionModel::SelectionFlags',
   'QAbstractItemView::CursorAction', 'QAbstractItemView::ScrollHint', 'const QString',
   'QHeaderView::ResizeMode', 'Qt::SortOrder', 'bool', 'Qt::Alignment', 'Qt::Orientation',
-  'uint', 'Qt::TextElideMode', 'QSizePolicy::Policy'
+  'uint', 'Qt::TextElideMode', 'QSizePolicy::Policy', 'QWidget *', 'QComboBox::InsertPolicy',
+  'QComboBox::SizeAdjustPolicy'
 ] as const;
 type ArgumentTypeName = typeof SUPPORTED_ARG_TYPES[number];
 
@@ -38,7 +39,8 @@ const SUPPORTED_RETURN_TYPES = [
   'void', 'GLfloat', 'GLenum', 'GLboolean', 'GLint', 'GLuint', 'GLclampf',
   'GLsizei', 'bool', 'QModelIndex', 'QModelIndexList', 'Qt::Alignment', 'int',
   'Qt::Orientation', 'Qt::SortOrder', 'QHeaderView::ResizeMode', 'QRect',
-  'QString'
+  'QString', 'QSize', 'QComboBox::InsertPolicy', 'QComboBox::SizeAdjustPolicy'
+
 ];
 type ReturnTypeName = typeof SUPPORTED_RETURN_TYPES[number];
 
@@ -171,6 +173,14 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
         methodBody += `  Qt::SortOrder ${arg.name} = static_cast<Qt::SortOrder>(info[${i}].As<Napi::Number>().Int32Value());`;
         break;
 
+      case 'QComboBox::InsertPolicy':
+        methodBody += `  QComboBox::InsertPolicy ${arg.name} = static_cast<QComboBox::InsertPolicy>(info[${i}].As<Napi::Number>().Int32Value());`;
+        break;
+
+      case 'QComboBox::SizeAdjustPolicy':
+        methodBody += `  QComboBox::SizeAdjustPolicy ${arg.name} = static_cast<QComboBox::SizeAdjustPolicy>(info[${i}].As<Napi::Number>().Int32Value());`;
+        break;
+
       case 'Qt::TextElideMode':
         methodBody += `  Qt::TextElideMode ${arg.name} = static_cast<Qt::TextElideMode>(info[${i}].As<Napi::Number>().Int32Value());`;
         break;
@@ -229,7 +239,9 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
     case 'Qt::Orientation':
     case 'QHeaderView::ResizeMode':
     case 'Qt::SortOrder':
-      methodBody += `  return Napi::Number::New(env, static_cast<uint>(result));`;
+    case 'QComboBox::InsertPolicy':
+    case 'QComboBox::SizeAdjustPolicy':
+        methodBody += `  return Napi::Number::New(env, static_cast<uint>(result));`;
       break;
     case 'GLboolean':
     case 'bool':
@@ -250,6 +262,11 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
     case 'QRect':
       methodBody += `  auto resultInstance = QRectWrap::constructor.New(
       {Napi::External<QRect>::New(env, new QRect(result))});
+    return resultInstance;`;
+      break;
+    case 'QSize':
+      methodBody += `  auto resultInstance = QSizeWrap::constructor.New(
+      {Napi::External<QSize>::New(env, new QSize(result))});
     return resultInstance;`;
       break;
     case 'QString':
@@ -309,6 +326,12 @@ function formatTSMethod(methodName: string, args: CppArgument[], returnType: Ret
         break;
       case 'Qt::SortOrder':
         tsBody += 'SortOrder';
+        break;
+      case 'QComboBox::InsertPolicy':
+        tsBody += 'InsertPolicy';
+        break;
+      case 'QComboBox::SizeAdjustPolicy':
+        tsBody += 'SizeAdjustPolicy';
         break;
       case 'Qt::TextElideMode':
         tsBody += 'TextElideMode';
@@ -378,10 +401,21 @@ function formatTSMethod(methodName: string, args: CppArgument[], returnType: Ret
       tsBody += 'SortOrder';
       break;
 
+    case 'QComboBox::InsertPolicy':
+      tsBody += 'InsertPolicy';
+      break;
+
+    case 'QComboBox::SizeAdjustPolicy':
+      tsBody += 'SizeAdjustPolicy';
+      break;
+
     case 'Qt::TextElideMode':
       tsBody += 'TextElideMode';
       break;
 
+    case 'QSize':
+      tsBody += 'QSize';
+      break;
     case 'QString':
       tsBody += 'string';
       break;
@@ -421,6 +455,10 @@ function formatTSMethod(methodName: string, args: CppArgument[], returnType: Ret
       tsBody += `        return new QRect(${methodCall});
 `;
       break;
+    case 'QSize':
+        tsBody += `        return new QSize(${methodCall});
+`;
+        break;
     default:
       tsBody += `        return ${methodCall};
 `;
