@@ -114,7 +114,6 @@ function formatCppMethodBody(className: string, methodName: string, args: CppArg
   let methodBody = `
 Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
-  Napi::HandleScope scope(env);
 `;
 
   for (let i=0; i<args.length; i++) {
