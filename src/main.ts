@@ -17,7 +17,7 @@ const SUPPORTED_ARG_TYPES = [
   'QAbstractItemView::CursorAction', 'QAbstractItemView::ScrollHint', 'const QString',
   'QHeaderView::ResizeMode', 'Qt::SortOrder', 'bool', 'Qt::Alignment', 'Qt::Orientation',
   'uint', 'Qt::TextElideMode', 'QSizePolicy::Policy', 'QWidget *', 'QComboBox::InsertPolicy',
-  'QComboBox::SizeAdjustPolicy'
+  'QComboBox::SizeAdjustPolicy', 'const QSize'
 ] as const;
 type ArgumentTypeName = typeof SUPPORTED_ARG_TYPES[number];
 
@@ -27,7 +27,7 @@ function isSupportedArgType(argName: string): argName is ArgumentTypeName {
 
 // List of argument types which need to be dereferenced with `*` during the method call.
 const DEREFERENCE_TYPES: ArgumentTypeName[] = [
-  'const QModelIndex', 'const QPoint'
+  'const QModelIndex', 'const QPoint', 'const QSize'
 ];
 
 const TS_WRAPPER_TYPES: ArgumentTypeName[] = [
@@ -147,6 +147,12 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
         methodBody += `  QPointWrap* ${arg.name}Wrap = Napi::ObjectWrap<QPointWrap>::Unwrap(info[${i}].As<Napi::Object>());
   QPoint* ${arg.name} = ${arg.name}Wrap->getInternalInstance();`;
         break;
+
+      case 'const QSize':
+        methodBody += `  QSizeWrap* ${arg.name}Wrap = Napi::ObjectWrap<QSizeWrap>::Unwrap(info[${i}].As<Napi::Object>());
+  QSize* ${arg.name} = ${arg.name}Wrap->getInternalInstance();`;
+        break;
+
       case 'QItemSelectionModel::SelectionFlags':
         methodBody += `  QItemSelectionModel::SelectionFlags ${arg.name} = static_cast<QItemSelectionModel::SelectionFlags>(info[${i}].As<Napi::Number>().Int32Value());`;
         break;
@@ -311,6 +317,9 @@ function formatTSMethod(methodName: string, args: CppArgument[], returnType: Ret
       case 'const QPoint':
         tsBody += 'QPoint';
         break
+      case 'const QSize':
+        tsBody += 'QSize';
+        break;
       case 'QItemSelectionModel::SelectionFlags':
         tsBody += 'SelectionFlag';
         break;
