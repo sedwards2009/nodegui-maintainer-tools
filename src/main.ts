@@ -8,6 +8,7 @@ import { default as getStdin } from 'get-stdin';
 const log = console.log.bind(console);
 
 const classNameRegex = /\/\/\s+CLASS:\s+(?<className>\w+)/;
+const propNameRegex = /\/\/\s+PROP:\s+(?<className>\w+)/;
 const sigRegex = /\/\/\s+TODO:\s+(virtual\s+)?(?<returnType>[\w:]+)\s+\&?(?<methodName>[A-Za-z0-9]+)[(](?<args>[^)]*)\)/;
 
 // ---- Argument types ----
@@ -39,8 +40,8 @@ const SUPPORTED_RETURN_TYPES = [
   'void', 'GLfloat', 'GLenum', 'GLboolean', 'GLint', 'GLuint', 'GLclampf',
   'GLsizei', 'bool', 'QModelIndex', 'QModelIndexList', 'Qt::Alignment', 'int',
   'Qt::Orientation', 'Qt::SortOrder', 'QHeaderView::ResizeMode', 'QRect',
-  'QString', 'QSize', 'QComboBox::InsertPolicy', 'QComboBox::SizeAdjustPolicy'
-
+  'QString', 'QSize', 'QComboBox::InsertPolicy', 'QComboBox::SizeAdjustPolicy',
+  'Qt::ContextMenuPolicy', 'QIcon','Qt::WindowFlags'
 ];
 type ReturnTypeName = typeof SUPPORTED_RETURN_TYPES[number];
 
@@ -65,14 +66,14 @@ interface ExpandedMethodFailedResult {
 type ExpandedMethodResult = ExpandedMethodOkResult | ExpandedMethodFailedResult;
 
 
-function expandMethod(className: string, signature: string): ExpandedMethodResult {
+function parseMethodSignature(signature: string): { args: CppArgument[], methodName: string, returnType: string } {
   const found = signature.match(sigRegex);
   if ( ! found) {
     const result: ExpandedMethodFailedResult = {
       type: 'failed',
       message: `Signature didn't match regex for '${signature}'.`
     };
-    return result;
+    throw result;
   }
 
   const returnTypeString = found.groups.returnType;
@@ -81,7 +82,7 @@ function expandMethod(className: string, signature: string): ExpandedMethodResul
       type: 'failed',
       message: `Return type '${returnTypeString}' is unknown for signature '${signature}'.`
     };
-    return result;
+    throw result;
   }
   const returnType: ReturnTypeName = returnTypeString;
 
@@ -92,23 +93,52 @@ function expandMethod(className: string, signature: string): ExpandedMethodResul
         type: 'failed',
         message: `Argument type '${arg.type}' is unknown for signature '${signature}'.`
       };
-      return result;
+      throw result;
     }
   }
 
-  const methodName = found.groups.methodName;
-  const methodDeclaration = `  Napi::Value ${methodName}(const Napi::CallbackInfo& info);
-`;
-  const napiInit = `       InstanceMethod("${methodName}", &${className}Wrap::${methodName}),
-`;
-
-  const methodBody = formatCppMethodBody(className, methodName, args, returnType);
-  const tsBody = formatTSMethod(methodName, args, returnType);
-
-  const result: ExpandedMethodOkResult = { type: 'ok', methodDeclaration, napiInit, methodBody, tsBody };
-  return result;
+  return {
+    args,
+    methodName: found.groups.methodName,
+    returnType
+  };
 }
 
+function expandMethod(className: string, signature: string): ExpandedMethodResult {
+  try {
+    const { args, methodName, returnType } = parseMethodSignature(signature);
+    const methodDeclaration = `  Napi::Value ${methodName}(const Napi::CallbackInfo& info);
+`;
+    const napiInit = `       InstanceMethod("${methodName}", &${className}Wrap::${methodName}),
+`;
+    const methodBody = formatCppMethodBody(className, methodName, args, returnType);
+    const tsBody = formatTSMethod(methodName, args, returnType);
+
+    const result: ExpandedMethodOkResult = { type: 'ok', methodDeclaration, napiInit, methodBody, tsBody };
+    return result;
+  } catch(failedResult) {
+    return failedResult;
+  }
+}
+
+function expandProperty(signature: string): ExpandedMethodResult {
+  try {
+    const { args, methodName, returnType } = parseMethodSignature(signature);
+
+    const tsBody = formatTSProperty(methodName, args, returnType);
+    const result: ExpandedMethodOkResult = {
+      type: 'ok',
+      methodDeclaration: null,
+      napiInit: null,
+      methodBody: null,
+      tsBody
+    };
+
+    return result;
+  } catch(failedResult) {
+    return failedResult;
+  }
+}
 
 function formatCppMethodBody(className: string, methodName: string, args: CppArgument[], returnType: ReturnTypeName): string {
   let methodBody = `
@@ -290,148 +320,8 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
 
 function formatTSMethod(methodName: string, args: CppArgument[], returnType: ReturnTypeName): string {
   let tsBody = `    ${formatTSMethodName(methodName)}(`;
-  let comma = '';
-  for (const arg of args) {
-    tsBody += comma;
-    comma = ', ';
-
-    tsBody += `${arg.name}: `;
-    switch(arg.type) {
-      case 'GLboolean':
-      case 'bool':
-        tsBody += `boolean`;
-        break;
-      case 'GLclampf':
-      case 'GLenum':
-      case 'GLfloat':
-      case 'GLint':
-      case 'GLuint':
-      case 'GLsizei':
-      case 'int':
-      case 'uint':
-        tsBody += `number`;
-        break;
-      case 'const QModelIndex':
-        tsBody += 'QModelIndex';
-        break;
-      case 'const QPoint':
-        tsBody += 'QPoint';
-        break
-      case 'const QSize':
-        tsBody += 'QSize';
-        break;
-      case 'QItemSelectionModel::SelectionFlags':
-        tsBody += 'SelectionFlag';
-        break;
-      case 'QAbstractItemView::CursorAction':
-        tsBody += 'CursorAction';
-        break;
-      case 'QAbstractItemView::ScrollHint':
-        tsBody += 'ScrollHint';
-        break;
-      case 'QHeaderView::ResizeMode':
-        tsBody += 'QHeaderViewResizeMode';
-        break;
-      case 'Qt::SortOrder':
-        tsBody += 'SortOrder';
-        break;
-      case 'QComboBox::InsertPolicy':
-        tsBody += 'InsertPolicy';
-        break;
-      case 'QComboBox::SizeAdjustPolicy':
-        tsBody += 'SizeAdjustPolicy';
-        break;
-      case 'Qt::TextElideMode':
-        tsBody += 'TextElideMode';
-        break;
-      case 'Qt::Alignment':
-        tsBody += 'AlignmentFlag';
-        break;
-      case 'Qt::Orientation':
-        tsBody += 'Orientation';
-        break;
-      case 'const QString':
-        tsBody += 'string';
-        break;
-      case 'QSizePolicy::Policy':
-        tsBody += 'QSizePolicyPolicy';
-        break;
-      default:
-        throw new Error(`Unexpected argument type ${arg.name} while processing TypeScript.`);
-    }
-  }
-  tsBody += `): `;
-
-  switch (returnType) {
-    case 'void':
-      tsBody += 'void';
-      break;
-
-    case 'GLboolean':
-    case 'bool':
-      tsBody += 'boolean';
-      break;
-
-    case 'int':
-    case 'GLenum':
-    case 'GLfloat':
-    case 'GLint':
-    case 'GLuint':
-    case 'GLsizei':
-      tsBody += 'number';
-      break;
-
-    case 'QModelIndex':
-      tsBody += returnType;
-      break;
-
-    case 'QModelIndexList':
-      tsBody += 'QModelIndex[]';
-      break;
-
-    case 'QRect':
-      tsBody += 'QRect';
-      break;
-
-    case 'Qt::Alignment':
-      tsBody += 'AlignmentFlag';
-      break;
-
-    case 'Qt::Orientation':
-      tsBody += 'Orientation';
-      break;
-
-    case 'QHeaderView::ResizeMode':
-      tsBody += 'QHeaderViewResizeMode';
-      break;
-
-    case 'Qt::SortOrder':
-      tsBody += 'SortOrder';
-      break;
-
-    case 'QComboBox::InsertPolicy':
-      tsBody += 'InsertPolicy';
-      break;
-
-    case 'QComboBox::SizeAdjustPolicy':
-      tsBody += 'SizeAdjustPolicy';
-      break;
-
-    case 'Qt::TextElideMode':
-      tsBody += 'TextElideMode';
-      break;
-
-    case 'QSize':
-      tsBody += 'QSize';
-      break;
-    case 'QString':
-      tsBody += 'string';
-      break;
-
-    default:
-      throw new Error(`Unexpected return type ${returnType} while processing TypeScript.`);
-  }
-  tsBody += ` {
+  tsBody += args.map(arg => `${arg.name}: ${mapCppToTSArgumentType(arg.type, arg.name)}`).join(', ');
+  tsBody += `): ${mapCppToTsReturnType(returnType)} {
 `;
 
   let methodCall = '';
@@ -475,6 +365,159 @@ function formatTSMethod(methodName: string, args: CppArgument[], returnType: Ret
 `;
   return tsBody;
 }
+
+
+function mapCppToTsReturnType(returnType: string): string {
+  switch (returnType) {
+    case 'void':
+      return 'void';
+    case 'GLboolean':
+    case 'bool':
+      return 'boolean';
+    case 'int':
+    case 'GLenum':
+    case 'GLfloat':
+    case 'GLint':
+    case 'GLuint':
+    case 'GLsizei':
+      return 'number';
+    case 'QModelIndex':
+      return returnType;
+    case 'QModelIndexList':
+      return 'QModelIndex[]';
+    case 'QRect':
+      return 'QRect';
+    case 'Qt::Alignment':
+      return 'AlignmentFlag';
+    case 'Qt::Orientation':
+      return 'Orientation';
+    case 'QHeaderView::ResizeMode':
+      return 'QHeaderViewResizeMode';
+    case 'Qt::SortOrder':
+      return 'SortOrder';
+    case 'QComboBox::InsertPolicy':
+      return 'InsertPolicy';
+    case 'QComboBox::SizeAdjustPolicy':
+      return 'SizeAdjustPolicy';
+    case 'Qt::TextElideMode':
+      return 'TextElideMode';
+    case 'QSize':
+      return 'QSize';
+    case 'Qt::ContextMenuPolicy':
+      return 'ContextMenuPolicy';
+    case 'Qt::WindowFlags':
+      return 'WindowFlags';
+    case 'QString':
+      return 'string';
+    case 'QIcon':
+      return 'QIcon';
+    default:
+      throw new Error(`Unexpected return type ${returnType} while processing TypeScript.`);
+  }
+}
+
+function mapCppToTSArgumentType(argType: string, argName: string): string {
+  switch(argType) {
+    case 'GLboolean':
+    case 'bool':
+      return `boolean`;
+    case 'GLclampf':
+    case 'GLenum':
+    case 'GLfloat':
+    case 'GLint':
+    case 'GLuint':
+    case 'GLsizei':
+    case 'int':
+    case 'uint':
+      return `number`;
+    case 'const QModelIndex':
+      return 'QModelIndex';
+    case 'const QPoint':
+      return 'QPoint';
+    case 'const QSize':
+      return 'QSize';
+    case 'QItemSelectionModel::SelectionFlags':
+      return 'SelectionFlag';
+    case 'QAbstractItemView::CursorAction':
+      return 'CursorAction';
+    case 'QAbstractItemView::ScrollHint':
+      return 'ScrollHint';
+    case 'QHeaderView::ResizeMode':
+      return 'QHeaderViewResizeMode';
+    case 'Qt::SortOrder':
+      return 'SortOrder';
+    case 'QComboBox::InsertPolicy':
+      return 'InsertPolicy';
+    case 'QComboBox::SizeAdjustPolicy':
+      return 'SizeAdjustPolicy';
+    case 'Qt::TextElideMode':
+      return 'TextElideMode';
+    case 'Qt::Alignment':
+      return 'AlignmentFlag';
+    case 'Qt::Orientation':
+      return 'Orientation';
+    case 'const QString':
+      return 'string';
+    case 'QSizePolicy::Policy':
+      return 'QSizePolicyPolicy';
+    default:
+      throw new Error(`Unexpected argument type ${argName} while processing TypeScript.`);
+  }
+}
+
+function formatTSProperty(methodName: string, args: CppArgument[], returnType: ReturnTypeName): string {
+  let tsBody = `    ${formatTSMethodName(methodName)}(`;
+  tsBody += args.map(arg => `${arg.name}: ${mapCppToTSArgumentType(arg.type, arg.name)}`).join(', ');
+  tsBody += `): ${mapCppToTsReturnType(returnType)} {
+`;
+
+  switch (returnType) {
+    case 'void':
+      tsBody += `this.setProperty('${methodName[3].toLowerCase()}${methodName.slice(4)}', ${args.map((arg): string => arg.name).join(', ')});
+`;
+      break;
+
+    case 'bool':
+      tsBody += `        return this.property('${methodName}').toBool();
+`;
+      break;
+    case 'QString':
+      tsBody += `        return this.property('${methodName}').toString();
+`;
+      break;
+
+    case 'Qt::WindowFlags':
+    case 'Qt::ContextMenuPolicy':
+    case 'int':
+    case 'uint':
+      tsBody += `        return this.property('${methodName}').toInt();
+`;
+      break;
+
+    case 'QRect':
+      tsBody += `        return QRect.fromQVariant(this.property('${methodName}'));
+`;
+        break;
+
+    case 'QSize':
+      tsBody += `        return QSize.fromQVariant(this.property('${methodName}'));
+`;
+      break;
+
+    case 'QIcon':
+      tsBody += `        return QIcon.fromQVariant(this.property('${methodName}'));
+`;
+      break;
+
+    default:
+      tsBody += `        return this.property('${methodName}');
+`;
+  }
+  tsBody += `    }
+`;
+  return tsBody;
+}
+
 
 interface CppArgument {
   type: ArgumentTypeName;
@@ -523,10 +566,15 @@ function process(inputString: string): void {
     return;
   }
 
-  const found = lines[lineNumber].match(classNameRegex);
+  let found = lines[lineNumber].match(classNameRegex);
+  let isProp = false;
   if ( ! found) {
-    log(`ERROR: Unable to find CLASS comment. i.e. // CLASS: FooBarWidget`);
-    return;
+    found = lines[lineNumber].match(propNameRegex)
+    if ( ! found) {
+      log(`ERROR: Unable to find CLASS or PROP comment. i.e. // CLASS: FooBarWidget`);
+      return;
+    }
+    isProp = true;
   }
   const className = found.groups.className;
   lineNumber++;
@@ -541,11 +589,19 @@ function process(inputString: string): void {
       continue;
     }
 
-    const result = expandMethod(className, trimLine);
+    let result: ExpandedMethodResult;
+    if (isProp) {
+      result = expandProperty(trimLine);
+    } else {
+      result = expandMethod(className, trimLine);
+    }
+
     switch (result.type) {
       case 'ok':
         const { methodDeclaration, napiInit, methodBody, tsBody } = <ExpandedMethodOkResult> result;
-        cppDeclaration.push(methodDeclaration);
+        if (methodDeclaration != null) {
+          cppDeclaration.push(methodDeclaration);
+        }
 
         if (napiInit != null) {
           napiInitBlock.push(napiInit);
@@ -565,20 +621,27 @@ function process(inputString: string): void {
     }
   }
   log(`// CLASS: ${className}`);
-  log('//----------------------------------------------------');
-  log('// C++ declaration');
-  log(cppDeclaration.join(''));
-  log('');
 
-  log('//----------------------------------------------------');
-  log('// Napi declaration');
-  log(napiInitBlock.join(''));
-  log('');
+  if (cppDeclaration.length !== 0) {
+    log('//----------------------------------------------------');
+    log('// C++ declaration');
+    log(cppDeclaration.join(''));
+    log('');
+  }
 
-  log('//----------------------------------------------------');
-  log('// C++ body');
-  log(bodyBlock.join(''));
-  log('');
+  if (napiInitBlock.length !== 0) {
+    log('//----------------------------------------------------');
+    log('// Napi declaration');
+    log(napiInitBlock.join(''));
+    log('');
+  }
+
+  if (bodyBlock.length !== 0) {
+    log('//----------------------------------------------------');
+    log('// C++ body');
+    log(bodyBlock.join(''));
+    log('');
+  }
 
   log('//----------------------------------------------------');
   log('// TS body');
