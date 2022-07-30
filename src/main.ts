@@ -17,8 +17,9 @@ const SUPPORTED_ARG_TYPES = [
   'const QModelIndex', 'int', 'const QPoint', 'QItemSelectionModel::SelectionFlags',
   'QAbstractItemView::CursorAction', 'QAbstractItemView::ScrollHint', 'const QString',
   'QHeaderView::ResizeMode', 'Qt::SortOrder', 'bool', 'Qt::Alignment', 'Qt::Orientation',
-  'uint', 'Qt::TextElideMode', 'QSizePolicy::Policy', 'QWidget *', 'QComboBox::InsertPolicy',
-  'QComboBox::SizeAdjustPolicy', 'const QSize'
+  'uint', 'Qt::TextElideMode', 'QSizePolicy::Policy', 'QWidget', 'QComboBox::InsertPolicy',
+  'QComboBox::SizeAdjustPolicy', 'const QSize', 'QIcon::Mode', 'QIcon::State', 'const QPixmap',
+  'QPainter', 'Qt::AspectRatioMode', 'const QSizeF', 'qreal'
 ] as const;
 type ArgumentTypeName = typeof SUPPORTED_ARG_TYPES[number];
 
@@ -28,11 +29,11 @@ function isSupportedArgType(argName: string): argName is ArgumentTypeName {
 
 // List of argument types which need to be dereferenced with `*` during the method call.
 const DEREFERENCE_TYPES: ArgumentTypeName[] = [
-  'const QModelIndex', 'const QPoint', 'const QSize'
+  'const QModelIndex', 'const QPoint', 'const QSize', 'const QPixmap', 'QPainter', 'const QSizeF'
 ];
 
 const TS_WRAPPER_TYPES: ArgumentTypeName[] = [
-  'const QModelIndex'
+  'const QModelIndex', 'QPainter', 'const QPixmap'
 ];
 
 // ---- Return types ----
@@ -41,7 +42,7 @@ const SUPPORTED_RETURN_TYPES = [
   'GLsizei', 'bool', 'QModelIndex', 'QModelIndexList', 'Qt::Alignment', 'int',
   'Qt::Orientation', 'Qt::SortOrder', 'QHeaderView::ResizeMode', 'QRect',
   'QString', 'QSize', 'QComboBox::InsertPolicy', 'QComboBox::SizeAdjustPolicy',
-  'Qt::ContextMenuPolicy', 'QIcon','Qt::WindowFlags'
+  'Qt::ContextMenuPolicy', 'QIcon','Qt::WindowFlags', 'QWidget', 'QSizeF'
 ];
 type ReturnTypeName = typeof SUPPORTED_RETURN_TYPES[number];
 
@@ -155,6 +156,7 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
         break;
       case 'GLclampf':
       case 'GLfloat':
+      case 'qreal':
         methodBody += `  ${arg.type} ${arg.name} = info[${i}].As<Napi::Number>().FloatValue();`;
         break;
       case 'GLenum':
@@ -182,7 +184,10 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
         methodBody += `  QSizeWrap* ${arg.name}Wrap = Napi::ObjectWrap<QSizeWrap>::Unwrap(info[${i}].As<Napi::Object>());
   QSize* ${arg.name} = ${arg.name}Wrap->getInternalInstance();`;
         break;
-
+      case 'const QSizeF':
+        methodBody += `  QSizeFWrap* ${arg.name}Wrap = Napi::ObjectWrap<QSizeFWrap>::Unwrap(info[${i}].As<Napi::Object>());
+  QSizeF* ${arg.name} = ${arg.name}Wrap->getInternalInstance();`;
+        break;
       case 'QItemSelectionModel::SelectionFlags':
         methodBody += `  QItemSelectionModel::SelectionFlags ${arg.name} = static_cast<QItemSelectionModel::SelectionFlags>(info[${i}].As<Napi::Number>().Int32Value());`;
         break;
@@ -226,9 +231,32 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
       case 'Qt::Orientation':
         methodBody += `  Qt::Orientation ${arg.name} = static_cast<Qt::Orientation>(info[${i}].As<Napi::Number>().Int32Value());`;
         break;
+      case 'Qt::AspectRatioMode':
+        methodBody += `  Qt::AspectRatioMode ${arg.name} = static_cast<Qt::AspectRatioMode>(info[${i}].As<Napi::Number>().Int32Value());`;
+        break;
       case 'QSizePolicy::Policy':
         methodBody += `  QSizePolicy::Policy ${arg.name} = static_cast<QSizePolicy::Policy>(info[${i}].As<Napi::Number>().Int32Value());`;
         break;
+      case 'QWidget':
+        methodBody += `  Napi::Object ${arg.name}WidgetObject = info[${i}].As<Napi::Object>();
+    NodeWidgetWrap* ${arg.name}WidgetWrap =
+        Napi::ObjectWrap<NodeWidgetWrap>::Unwrap(${arg.name}WidgetObject);
+    QWidget *${arg.name} = ${arg.name}WidgetWrap->getInternalInstance();`;
+        break;
+      case 'QIcon::Mode':
+        methodBody += `  QIcon::Mode ${arg.name} = static_cast<QIcon::Mode>(info[${i}].As<Napi::Number>().Int32Value());`;
+        break;
+      case 'QIcon::State':
+        methodBody += `  QIcon::State ${arg.name} = static_cast<QIcon::State>(info[${i}].As<Napi::Number>().Int32Value());`;
+        break;
+      case 'const QPixmap':
+        methodBody += `  QPixmapWrap* ${arg.name}Wrap = Napi::ObjectWrap<QPixmapWrap>::Unwrap(info[${i}].As<Napi::Object>());
+    QPixmap* ${arg.name} = ${arg.name}Wrap->getInternalInstance();`;
+          break;
+        case 'QPainter':
+          methodBody += `  QPainterWrap* ${arg.name}Wrap = Napi::ObjectWrap<QPainterWrap>::Unwrap(info[${i}].As<Napi::Object>());
+    QPainter* ${arg.name} = ${arg.name}Wrap->getInternalInstance();`;
+            break;
 
       default:
     }
@@ -268,6 +296,7 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
     case 'GLint':
     case 'GLuint':
     case 'GLsizei':
+    case 'qreal':
       methodBody += `  return Napi::Number::New(env, result);`;
       break;
     case 'Qt::Alignment':
@@ -304,9 +333,21 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
       {Napi::External<QSize>::New(env, new QSize(result))});
     return resultInstance;`;
       break;
+    case 'QSizeF':
+      methodBody += `  auto resultInstance = QSizeFWrap::constructor.New(
+      {Napi::External<QSizeF>::New(env, new QSizeF(result))});
+    return resultInstance;`;
+      break;
     case 'QString':
       methodBody += `  return Napi::String::New(env, result.toStdString());
 `;
+      break;
+    case 'QWidget':
+      methodBody += `  if (result) {
+        return WrapperCache::instance.getWrapper(env, result);
+      } else {
+        return env.Null();
+      }`;
       break;
     default:
       throw new Error(`Unexpected return type ${returnType} while processing C++ body.`);
@@ -354,9 +395,17 @@ function formatTSMethod(methodName: string, args: CppArgument[], returnType: Ret
 `;
       break;
     case 'QSize':
-        tsBody += `        return new QSize(${methodCall});
+      tsBody += `        return new QSize(${methodCall});
 `;
-        break;
+      break;
+    case 'QSizeF':
+      tsBody += `        return new QSizeF(${methodCall});
+`;
+      break;
+    case 'QWidget':
+      tsBody += `        return wrapperCache.getWrapper(static_cast<QObject*>(${methodCall})) as QWidget;
+`;
+      break;
     default:
       tsBody += `        return ${methodCall};
 `;
@@ -380,6 +429,7 @@ function mapCppToTsReturnType(returnType: string): string {
     case 'GLint':
     case 'GLuint':
     case 'GLsizei':
+    case 'qreal':
       return 'number';
     case 'QModelIndex':
       return returnType;
@@ -403,6 +453,8 @@ function mapCppToTsReturnType(returnType: string): string {
       return 'TextElideMode';
     case 'QSize':
       return 'QSize';
+    case 'QSizeF':
+      return 'QSizeF';
     case 'Qt::ContextMenuPolicy':
       return 'ContextMenuPolicy';
     case 'Qt::WindowFlags':
@@ -410,7 +462,8 @@ function mapCppToTsReturnType(returnType: string): string {
     case 'QString':
       return 'string';
     case 'QIcon':
-      return 'QIcon';
+    case 'QWidget':
+      return returnType;
     default:
       throw new Error(`Unexpected return type ${returnType} while processing TypeScript.`);
   }
@@ -429,6 +482,7 @@ function mapCppToTSArgumentType(argType: string, argName: string): string {
     case 'GLsizei':
     case 'int':
     case 'uint':
+    case 'qreal':
       return `number`;
     case 'const QModelIndex':
       return 'QModelIndex';
@@ -436,6 +490,8 @@ function mapCppToTSArgumentType(argType: string, argName: string): string {
       return 'QPoint';
     case 'const QSize':
       return 'QSize';
+    case 'const QSizeF':
+      return 'QSizeF';
     case 'QItemSelectionModel::SelectionFlags':
       return 'SelectionFlag';
     case 'QAbstractItemView::CursorAction':
@@ -456,10 +512,22 @@ function mapCppToTSArgumentType(argType: string, argName: string): string {
       return 'AlignmentFlag';
     case 'Qt::Orientation':
       return 'Orientation';
+    case 'Qt::AspectRatioMode':
+      return 'AspectRatioMode';
     case 'const QString':
       return 'string';
     case 'QSizePolicy::Policy':
       return 'QSizePolicyPolicy';
+    case 'QWidget':
+      return 'QWidget';
+    case 'QIcon::Mode':
+      return 'QIconMode';
+    case 'QIcon::State':
+      return 'QIconState';
+    case 'const QPixmap':
+      return 'QPixmap';
+    case 'QPainter':
+      return 'QPainter';
     default:
       throw new Error(`Unexpected argument type ${argName} while processing TypeScript.`);
   }
@@ -504,6 +572,11 @@ function formatTSProperty(methodName: string, args: CppArgument[], returnType: R
 `;
       break;
 
+    case 'QSizeF':
+      tsBody += `        return QSizeF.fromQVariant(this.property('${methodName}'));
+  `;
+      break;
+
     case 'QIcon':
       tsBody += `        return QIcon.fromQVariant(this.property('${methodName}'));
 `;
@@ -532,7 +605,7 @@ function parseArgs(args: string): CppArgument[] {
     const argParts = part.trim().split(' ');
     const type = argParts.slice(0, argParts.length-1).join(' ');
     let name = argParts[argParts.length-1];
-    if (name.startsWith('&')) {
+    if (name.startsWith('&') || name.startsWith('*')) {
       name = name.substr(1);
     }
     if (name != "") {
