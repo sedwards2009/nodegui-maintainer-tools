@@ -19,7 +19,7 @@ const SUPPORTED_ARG_TYPES = [
   'QHeaderView::ResizeMode', 'Qt::SortOrder', 'bool', 'Qt::Alignment', 'Qt::Orientation',
   'uint', 'Qt::TextElideMode', 'QSizePolicy::Policy', 'QWidget', 'QComboBox::InsertPolicy',
   'QComboBox::SizeAdjustPolicy', 'const QSize', 'QIcon::Mode', 'QIcon::State', 'const QPixmap',
-  'QPainter', 'Qt::AspectRatioMode', 'const QSizeF', 'qreal'
+  'QPainter', 'Qt::AspectRatioMode', 'const QSizeF', 'qreal', 'QAction', 'QMenu'
 ] as const;
 type ArgumentTypeName = typeof SUPPORTED_ARG_TYPES[number];
 
@@ -33,7 +33,7 @@ const DEREFERENCE_TYPES: ArgumentTypeName[] = [
 ];
 
 const TS_WRAPPER_TYPES: ArgumentTypeName[] = [
-  'const QModelIndex', 'QPainter', 'const QPixmap'
+  'const QModelIndex', 'QPainter', 'const QPixmap', 'QAction', 'QMenu'
 ];
 
 // ---- Return types ----
@@ -42,7 +42,8 @@ const SUPPORTED_RETURN_TYPES = [
   'GLsizei', 'bool', 'QModelIndex', 'QModelIndexList', 'Qt::Alignment', 'int',
   'Qt::Orientation', 'Qt::SortOrder', 'QHeaderView::ResizeMode', 'QRect',
   'QString', 'QSize', 'QComboBox::InsertPolicy', 'QComboBox::SizeAdjustPolicy',
-  'Qt::ContextMenuPolicy', 'QIcon','Qt::WindowFlags', 'QWidget', 'QSizeF'
+  'Qt::ContextMenuPolicy', 'QIcon','Qt::WindowFlags', 'QWidget', 'QSizeF',
+  'qreal', 'QAction', 'QMenu'
 ];
 type ReturnTypeName = typeof SUPPORTED_RETURN_TYPES[number];
 
@@ -118,7 +119,8 @@ function expandMethod(className: string, signature: string): ExpandedMethodResul
     const result: ExpandedMethodOkResult = { type: 'ok', methodDeclaration, napiInit, methodBody, tsBody };
     return result;
   } catch(failedResult) {
-    return failedResult;
+    const result: ExpandedMethodFailedResult = { type: 'failed', message: failedResult };
+    return result;
   }
 }
 
@@ -252,11 +254,19 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
       case 'const QPixmap':
         methodBody += `  QPixmapWrap* ${arg.name}Wrap = Napi::ObjectWrap<QPixmapWrap>::Unwrap(info[${i}].As<Napi::Object>());
     QPixmap* ${arg.name} = ${arg.name}Wrap->getInternalInstance();`;
-          break;
-        case 'QPainter':
-          methodBody += `  QPainterWrap* ${arg.name}Wrap = Napi::ObjectWrap<QPainterWrap>::Unwrap(info[${i}].As<Napi::Object>());
+        break;
+      case 'QPainter':
+        methodBody += `  QPainterWrap* ${arg.name}Wrap = Napi::ObjectWrap<QPainterWrap>::Unwrap(info[${i}].As<Napi::Object>());
     QPainter* ${arg.name} = ${arg.name}Wrap->getInternalInstance();`;
-            break;
+        break;
+      case 'QAction':
+        methodBody += `  QActionWrap* ${arg.name}Wrap = Napi::ObjectWrap<QActionWrap>::Unwrap(info[${i}].As<Napi::Object>());
+    QAction* ${arg.name} = ${arg.name}Wrap->getInternalInstance();`;
+        break;
+      case 'QMenu':
+        methodBody += `  QMenuWrap* ${arg.name}Wrap = Napi::ObjectWrap<QMenuWrap>::Unwrap(info[${i}].As<Napi::Object>());
+    QMenu* ${arg.name} = ${arg.name}Wrap->getInternalInstance();`;
+        break;
 
       default:
     }
@@ -267,6 +277,10 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
   switch (returnType) {
     case 'void':
       methodBody += `  `;
+      break;
+    case 'QAction':
+    case 'QMenu':
+      methodBody += `  ${returnType}* result = `;
       break;
     default:
       methodBody += `  ${returnType} result = `;
@@ -343,6 +357,8 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
 `;
       break;
     case 'QWidget':
+    case 'QAction':
+    case 'QMenu':
       methodBody += `  if (result) {
         return WrapperCache::instance.getWrapper(env, result);
       } else {
@@ -403,9 +419,18 @@ function formatTSMethod(methodName: string, args: CppArgument[], returnType: Ret
 `;
       break;
     case 'QWidget':
-      tsBody += `        return wrapperCache.getWrapper(static_cast<QObject*>(${methodCall})) as QWidget;
+      tsBody += `        return wrapperCache.getWrapper(${methodCall}) as QWidget;
 `;
       break;
+    case 'QAction':
+      tsBody += `        return wrapperCache.getWrapper(${methodCall}) as QAction;
+`;
+      break;
+    case 'QMenu':
+      tsBody += `        return wrapperCache.getWrapper(${methodCall}) as QMenu;
+`;
+      break;
+
     default:
       tsBody += `        return ${methodCall};
 `;
@@ -463,6 +488,8 @@ function mapCppToTsReturnType(returnType: string): string {
       return 'string';
     case 'QIcon':
     case 'QWidget':
+    case 'QAction':
+    case 'QMenu':
       return returnType;
     default:
       throw new Error(`Unexpected return type ${returnType} while processing TypeScript.`);
@@ -528,8 +555,12 @@ function mapCppToTSArgumentType(argType: string, argName: string): string {
       return 'QPixmap';
     case 'QPainter':
       return 'QPainter';
+    case 'QAction':
+      return 'QAction';
+    case 'QMenu':
+      return 'QMenu';
     default:
-      throw new Error(`Unexpected argument type ${argName} while processing TypeScript.`);
+      throw new Error(`mapCppToTSArgumentType(): Unexpected argument type '${argType}' specificed for argument '${argName}' while processing TypeScript.`);
   }
 }
 
