@@ -9,7 +9,7 @@ const log = console.log.bind(console);
 
 const classNameRegex = /\/\/\s+CLASS:\s+(?<className>\w+)/;
 const propNameRegex = /\/\/\s+PROP:\s+(?<className>\w+)/;
-const sigRegex = /\/\/\s+TODO:\s+(virtual\s+)?(?<returnType>[\w:]+)\s+\&?(?<methodName>[A-Za-z0-9]+)[(](?<args>[^)]*)\)/;
+const sigRegex = /\/\/\s+TODO:\s+(virtual\s+)?(?<returnType>[\w:]+)\s+\&?\*?\s*(?<methodName>[A-Za-z0-9]+)[(](?<args>[^)]*)\)/;
 
 // ---- Argument types ----
 const SUPPORTED_ARG_TYPES = [
