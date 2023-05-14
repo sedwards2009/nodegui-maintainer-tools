@@ -14,12 +14,13 @@ const sigRegex = /\/\/\s+TODO:\s+(virtual\s+)?(?<returnType>[\w:]+)\s+\&?\*?\s*(
 // ---- Argument types ----
 const SUPPORTED_ARG_TYPES = [
   'GLenum', 'GLfloat', 'GLint', 'GLuint', 'GLsizei', 'GLclampf', 'GLboolean',
-  'const QModelIndex', 'int', 'const QPoint', 'QItemSelectionModel::SelectionFlags',
+  'const QModelIndex', 'int', 'const QPoint', 'QPoint', 'QItemSelectionModel::SelectionFlags',
   'QAbstractItemView::CursorAction', 'QAbstractItemView::ScrollHint', 'const QString',
   'QHeaderView::ResizeMode', 'Qt::SortOrder', 'bool', 'Qt::Alignment', 'Qt::Orientation',
   'uint', 'Qt::TextElideMode', 'QSizePolicy::Policy', 'QWidget', 'QComboBox::InsertPolicy',
   'QComboBox::SizeAdjustPolicy', 'const QSize', 'QIcon::Mode', 'QIcon::State', 'const QPixmap',
-  'QPainter', 'Qt::AspectRatioMode', 'const QSizeF', 'qreal', 'QAction', 'QMenu'
+  'QPainter', 'Qt::AspectRatioMode', 'const QSizeF', 'qreal', 'QAction', 'QMenu', 'const QIcon',
+  'Qt::Corner'
 ] as const;
 type ArgumentTypeName = typeof SUPPORTED_ARG_TYPES[number];
 
@@ -29,11 +30,12 @@ function isSupportedArgType(argName: string): argName is ArgumentTypeName {
 
 // List of argument types which need to be dereferenced with `*` during the method call.
 const DEREFERENCE_TYPES: ArgumentTypeName[] = [
-  'const QModelIndex', 'const QPoint', 'const QSize', 'const QPixmap', 'QPainter', 'const QSizeF'
+  'const QModelIndex', 'const QPoint', 'const QSize', 'const QPixmap', 'QPainter', 'const QSizeF', 'QPoint',
+  'const QIcon'
 ];
 
 const TS_WRAPPER_TYPES: ArgumentTypeName[] = [
-  'const QModelIndex', 'QPainter', 'const QPixmap', 'QAction', 'QMenu'
+  'const QModelIndex', 'QPainter', 'const QPixmap', 'QAction', 'QMenu', 'QPoint', 'const QIcon', 'const QPoint',
 ];
 
 // ---- Return types ----
@@ -267,8 +269,16 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
         methodBody += `  QMenuWrap* ${arg.name}Wrap = Napi::ObjectWrap<QMenuWrap>::Unwrap(info[${i}].As<Napi::Object>());
     QMenu* ${arg.name} = ${arg.name}Wrap->getInternalInstance();`;
         break;
+      case 'const QIcon':
+        methodBody += `  QIconWrap* ${arg.name}Wrap = Napi::ObjectWrap<QIconWrap>::Unwrap(info[${i}].As<Napi::Object>());
+    QIcon* ${arg.name} = ${arg.name}Wrap->getInternalInstance();`;
+        break;
+      case 'Qt::Corner':
+        methodBody += `  Qt::Corner ${arg.name} = static_cast<Qt::Corner>(info[${i}].As<Napi::Number>().Int32Value());`;
+        break;
 
       default:
+        throw new Error(`formatCppMethodBody(): Unexpected arg type '${arg.type}' while processing C++ body.`);
     }
     methodBody += `
 `;
@@ -365,6 +375,13 @@ Napi::Value ${className}Wrap::${methodName}(const Napi::CallbackInfo& info) {
         return env.Null();
       }`;
       break;
+
+    case 'QIcon':
+      methodBody += `  auto resultInstance = QIconWrap::constructor.New(
+      {Napi::External<QIcon>::New(env, new QIcon(result))});
+    return resultInstance;`;
+      break;
+
     default:
       throw new Error(`Unexpected return type ${returnType} while processing C++ body.`);
   }
@@ -559,6 +576,10 @@ function mapCppToTSArgumentType(argType: string, argName: string): string {
       return 'QAction';
     case 'QMenu':
       return 'QMenu';
+    case 'const QIcon':
+      return 'QIcon';
+    case 'Qt::Corner':
+      return 'Corner';
     default:
       throw new Error(`mapCppToTSArgumentType(): Unexpected argument type '${argType}' specificed for argument '${argName}' while processing TypeScript.`);
   }
